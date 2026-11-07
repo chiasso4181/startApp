@@ -13,26 +13,31 @@
     }
     .card {
       background: #1e293b; border: 1px solid #334155; border-radius: 12px;
-      padding: 28px 32px; width: 500px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+      padding: 28px 32px; width: 540px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
       text-align: center;
     }
-    h2 { margin: 0 0 12px 0; font-size: 22px; color: #38bdf8; }
+    h2 { margin: 0 0 14px 0; font-size: 22px; color: #38bdf8; }
     .path-box {
       background: #0f172a; border: 1px solid #334155; border-radius: 6px;
-      padding: 10px; font-family: monospace; font-size: 12px; color: #cbd5e1;
-      margin-bottom: 18px; word-break: break-all;
+      padding: 10px 12px; font-family: monospace; font-size: 12px; color: #cbd5e1;
+      margin-bottom: 16px; text-align: left; word-break: break-all; line-height: 1.6;
     }
     .btn {
       width: 100%; padding: 14px 16px; border: none; border-radius: 8px;
-      font-size: 16px; font-weight: 700; cursor: pointer;
+      font-size: 15px; font-weight: 700; cursor: pointer; margin-bottom: 10px;
     }
     .btn-green { background: #16a34a; color: #fff; }
-    .btn-green:hover { background: #15803d; }
+    .btn-green:hover { background: #15830d; }
     .btn-blue { background: #2563eb; color: #fff; }
     .btn-blue:hover { background: #1d4ed8; }
-    .hint { font-size: 13px; color: #94a3b8; margin-top: 12px; line-height: 1.5; }
+    .btn-done { background: #334155; color: #86efac; cursor: default; }
+    .hint { font-size: 13px; color: #94a3b8; margin-top: 8px; line-height: 1.5; white-space: pre-line; }
+    .reset-link {
+      display: inline-block; margin-top: 14px; font-size: 12px;
+      color: #64748b; cursor: pointer; text-decoration: underline;
+    }
     #log {
-      margin-top: 14px; font-family: monospace; font-size: 12px; text-align: left;
+      margin-top: 12px; font-family: monospace; font-size: 12px; text-align: left;
       color: #fca5a5; white-space: pre-wrap; max-height: 120px; overflow-y: auto;
     }
   </style>
@@ -42,56 +47,67 @@
 <div class="card">
   <h2 id="ui-title">Avvio Applicativo</h2>
   <div class="path-box" id="ui-path"></div>
-  <button id="btn-launch" class="btn btn-green">▶️ AVVIA APPLICATIVO</button>
+
+  <!-- Pulsante unico (mostrato dal 2° avvio in poi) -->
+  <button id="btn-launch" class="btn btn-green" style="display:none;">▶️ AVVIA APPLICATIVO</button>
+
+  <!-- Pulsanti di primo collegamento (mostrati solo la 1ª volta) -->
+  <button id="btn-step1" class="btn btn-blue" style="display:none;">1️⃣ COLLEGA CARTELLA CODICE (HTML / JS)</button>
+  <button id="btn-step2" class="btn btn-blue" style="display:none;">2️⃣ COLLEGA FILE DATABASE (.JSON)</button>
+
   <div class="hint" id="ui-hint"></div>
   <div id="log"></div>
+  <span class="reset-link" id="btn-reset" style="display:none;">⚙️ Riconfigura percorsi</span>
 </div>
 
 <script>
 // ============================================================================
-// CONFIGURAZIONE FISSA DEI TUOI APPLICATIVI (MODIFICA SOLO QUESTA TABELLA)
+// CONFIGURAZIONE DEI TUOI APPLICATIVI (CON PERCORSO CODICE E PERCORSO JSON SEPARATI)
 // ============================================================================
 const CATALOGO_APP = {
   turni: {
     titolo: "Piano Servizio",
-    percorsoFisso: "G:\\Reparto\\Piano_Servizio",     // <-- Metti il percorso di rete reale
-    fileHtml: "index.html",                           // <-- Nome del file HTML sul disco di rete
-    fileJson: "Piano_Servizio_Condiviso.json"         // <-- Nome del database JSON sul disco di rete
+    percorsoCodice: "C:\\Applicativi\\Piano_Servizio",                        // <-- Cartella dove stanno HTML, CSS e i 6 JS
+    fileHtml: "index.html",                                                   // <-- Nome del file HTML
+    percorsoJson: "G:\\Reparto\\Turni\\Piano_Servizio_Condiviso.json"         // <-- Percorso completo del file JSON (altro disco/cartella)
   },
   ddat: {
     titolo: "Numerazione DDAT",
-    percorsoFisso: "G:\\Reparto\\DDAT",               // <-- Metti il percorso di rete reale
+    percorsoCodice: "C:\\Applicativi\\DDAT",
     fileHtml: "index.html",
-    fileJson: "ddat_db.json"
+    percorsoJson: "G:\\Reparto\\Dati_DDAT\\ddat_db.json"
   },
   eurodac: {
     titolo: "Controllo EURODAC",
-    percorsoFisso: "G:\\Reparto\\EURODAC",            // <-- Metti il percorso di rete reale
+    percorsoCodice: "C:\\Applicativi\\EURODAC",
     fileHtml: "index.html",
-    fileJson: "eurodac_db.json"
+    percorsoJson: "G:\\Reparto\\Dati_EURODAC\\eurodac_db.json"
   }
 };
 // ============================================================================
 
-// Legge quale programma aprire dall'indirizzo (es. ?app=turni oppure ?app=ddat)
 const appKey = new URLSearchParams(location.search).get('app') || 'turni';
 const CFG = CATALOGO_APP[appKey] || CATALOGO_APP.turni;
 
-const DB_NAME = 'BootloaderHandlesDB';
-const STORE_NAME = 'folders';
+const nativeOpenFilePicker = window.showOpenFilePicker.bind(window);
+const DB_NAME = 'DualPathBootloaderDB';
+const STORE_NAME = 'handles';
 
 const uiTitle = document.getElementById('ui-title');
 const uiPath = document.getElementById('ui-path');
 const uiHint = document.getElementById('ui-hint');
 const btnLaunch = document.getElementById('btn-launch');
+const btnStep1 = document.getElementById('btn-step1');
+const btnStep2 = document.getElementById('btn-step2');
+const btnReset = document.getElementById('btn-reset');
 const logEl = document.getElementById('log');
 
 uiTitle.textContent = `🚀 ${CFG.titolo}`;
-uiPath.textContent = `Cartella: ${CFG.percorsoFisso}\nDatabase: ${CFG.fileJson}`;
+uiPath.innerHTML = `📁 <b>Codice:</b> ${CFG.percorsoCodice}\\${CFG.fileHtml}<br>🗄️ <b>DB JSON:</b> ${CFG.percorsoJson}`;
 
 function logErr(msg) { logEl.textContent += msg + '\n'; }
 
-// Salva in Edge il collegamento alla cartella per non chiederla più
+// --- Gestione memoria IndexedDB per i 2 percorsi (Codice + DB) ---
 function openIDB() {
   return new Promise((res, rej) => {
     const req = indexedDB.open(DB_NAME, 1);
@@ -100,140 +116,16 @@ function openIDB() {
     req.onerror = () => rej(req.error);
   });
 }
-async function getSavedFolder() {
+async function getHandle(key) {
   const db = await openIDB();
   return new Promise(res => {
-    const req = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(appKey);
+    const req = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(key);
     req.onsuccess = () => res(req.result || null);
     req.onerror = () => res(null);
   });
 }
-async function saveFolder(handle) {
+async function setHandle(key, handle) {
   const db = await openIDB();
-  db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(handle, appKey);
-}
-
-// Legge un file di testo dalla cartella di rete (ignorando ?v=...)
-async function readFileFromNet(rootHandle, relPath) {
-  const clean = relPath.split('?')[0].split('#')[0].replace(/^\.\//, '');
-  const parts = clean.split('/').filter(Boolean);
-  let curr = rootHandle;
-  for (let i = 0; i < parts.length - 1; i++) {
-    curr = await curr.getDirectoryHandle(parts[i]);
-  }
-  const fh = await curr.getFileHandle(parts[parts.length - 1]);
-  return await (await fh.getFile()).text();
-}
-
-// Carica in memoria il Database JSON + HTML + CSS + tutti i file JS
-async function startApp(dirHandle) {
-  try {
-    // 1. Chiede il consenso di lettura/scrittura a Edge
-    const perm = await dirHandle.requestPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') {
-      logErr('❌ Consenso negato. Clicca "Modifica file" nel popup per avviare.');
-      return;
-    }
-
-    // 2. Aggancia automaticamente il file JSON del database
-    window.__BOOTLOADER_DIR_HANDLE__ = dirHandle;
-    if (CFG.fileJson) {
-      try {
-        const dbHandle = await dirHandle.getFileHandle(CFG.fileJson, { create: false });
-        window.__BOOTLOADER_DB_HANDLE__ = dbHandle;
-        window.__BOOTLOADER_DB_TEXT__ = await (await dbHandle.getFile()).text();
-        // Se l'app chiama "Apri file" o "Salva file", usa in automatico questo JSON senza aprire finestre
-        window.showOpenFilePicker = async () => [window.__BOOTLOADER_DB_HANDLE__];
-        window.showSaveFilePicker = async () => window.__BOOTLOADER_DB_HANDLE__;
-      } catch (e) {
-        logErr(`⚠️ Database ${CFG.fileJson} non trovato nella cartella.`);
-      }
-    }
-
-    // 3. Legge il file HTML vero dalla cartella di rete
-    const rawHtml = await readFileFromNet(dirHandle, CFG.fileHtml);
-    const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
-
-    // 4. Carica i fogli di stile CSS
-    const headNodes = Array.from(doc.head.querySelectorAll('link[rel="stylesheet"], style'));
-    document.head.innerHTML = '';
-    document.title = doc.title || CFG.titolo;
-
-    for (const node of headNodes) {
-      if (node.tagName === 'STYLE') {
-        const st = document.createElement('style');
-        st.textContent = node.textContent;
-        document.head.appendChild(st);
-      } else if (node.tagName === 'LINK') {
-        const href = node.getAttribute('href');
-        if (!href) continue;
-        const cssText = await readFileFromNet(dirHandle, href);
-        const st = document.createElement('style');
-        st.textContent = cssText + `\n/*# sourceURL=${href.split('?')[0]} */`;
-        document.head.appendChild(st);
-      }
-    }
-
-    // 5. Carica la pagina e tutti gli script JS nell'ordine esatto
-    const scripts = [
-      ...Array.from(doc.head.querySelectorAll('script')),
-      ...Array.from(doc.body.querySelectorAll('script'))
-    ];
-    doc.body.querySelectorAll('script').forEach(s => s.remove());
-    document.body.className = doc.body.className;
-    document.body.style.cssText = doc.body.style.cssText;
-    document.body.innerHTML = doc.body.innerHTML;
-
-    for (const oldScript of scripts) {
-      const src = oldScript.getAttribute('src');
-      const s = document.createElement('script');
-      if (oldScript.type) s.type = oldScript.type;
-      if (!src) {
-        s.textContent = oldScript.textContent;
-      } else {
-        const cleanSrc = src.split('?')[0];
-        const jsCode = await readFileFromNet(dirHandle, src);
-        s.textContent = jsCode + `\n//# sourceURL=${cleanSrc}`;
-      }
-      document.body.appendChild(s);
-    }
-
-    // 6. Avvia il programma
-    document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
-    window.dispatchEvent(new Event('load'));
-
-  } catch (err) {
-    logErr(`❌ Errore: ${err.message}`);
-    console.error(err);
-  }
-}
-
-// Prepara il pulsante all'apertura
-(async () => {
-  const saved = await getSavedFolder();
-  if (saved) {
-    // Dal 2° avvio in poi: la cartella è già memorizzata!
-    btnLaunch.className = 'btn btn-green';
-    btnLaunch.textContent = `▶️ AVVIA ${CFG.titolo.toUpperCase()}`;
-    uiHint.textContent = 'Clicca il pulsante verde e premi "Modifica file" nel messaggio di Edge.';
-    btnLaunch.onclick = () => startApp(saved);
-  } else {
-    // Solo la 1ª volta in assoluto su quel PC:
-    btnLaunch.className = 'btn btn-blue';
-    btnLaunch.textContent = `📂 COLLEGA CARTELLA (SOLO LA 1ª VOLTA)`;
-    uiHint.textContent = '1. Clicca il pulsante blu (il percorso viene copiato da solo)\n2. Nella finestra premi Ctrl+V, poi Invio e clicca "Seleziona cartella".';
-    btnLaunch.onclick = async () => {
-      try {
-        await navigator.clipboard.writeText(CFG.percorsoFisso).catch(() => {});
-        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-        await saveFolder(handle);
-        await startApp(handle);
-      } catch (e) {
-        if (e.name !== 'AbortError') logErr(`❌ ${e.message}`);
-      }
-    };
-  }
-})();
-</script>
-</body>
-</html>
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore
