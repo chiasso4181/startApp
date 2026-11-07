@@ -13,7 +13,7 @@
     }
     .card {
       background: #1e293b; border: 1px solid #334155; border-radius: 12px;
-      padding: 28px 32px; width: 540px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+      padding: 28px 32px; width: 560px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
       text-align: center;
     }
     h2 { margin: 0 0 14px 0; font-size: 22px; color: #38bdf8; }
@@ -27,7 +27,7 @@
       font-size: 15px; font-weight: 700; cursor: pointer; margin-bottom: 10px;
     }
     .btn-green { background: #16a34a; color: #fff; }
-    .btn-green:hover { background: #15830d; }
+    .btn-green:hover { background: #15803d; }
     .btn-blue { background: #2563eb; color: #fff; }
     .btn-blue:hover { background: #1d4ed8; }
     .btn-done { background: #334155; color: #86efac; cursor: default; }
@@ -38,7 +38,7 @@
     }
     #log {
       margin-top: 12px; font-family: monospace; font-size: 12px; text-align: left;
-      color: #fca5a5; white-space: pre-wrap; max-height: 120px; overflow-y: auto;
+      color: #fca5a5; white-space: pre-wrap; max-height: 150px; overflow-y: auto;
     }
   </style>
 </head>
@@ -46,14 +46,11 @@
 
 <div class="card">
   <h2 id="ui-title">Avvio Applicativo</h2>
-  <div class="path-box" id="ui-path"></div>
+  <div class="path-box" id="ui-path">Caricamento configurazione...</div>
 
-  <!-- Pulsante unico (mostrato dal 2° avvio in poi) -->
   <button id="btn-launch" class="btn btn-green" style="display:none;">▶️ AVVIA APPLICATIVO</button>
-
-  <!-- Pulsanti di primo collegamento (mostrati solo la 1ª volta) -->
-  <button id="btn-step1" class="btn btn-blue" style="display:none;">1️⃣ COLLEGA CARTELLA CODICE (HTML / JS)</button>
-  <button id="btn-step2" class="btn btn-blue" style="display:none;">2️⃣ COLLEGA FILE DATABASE (.JSON)</button>
+  <button id="btn-step1" class="btn btn-blue">1️⃣ COLLEGA CARTELLA CODICE (HTML / JS)</button>
+  <button id="btn-step2" class="btn btn-blue">2️⃣ COLLEGA FILE DATABASE (.JSON)</button>
 
   <div class="hint" id="ui-hint"></div>
   <div id="log"></div>
@@ -61,21 +58,33 @@
 </div>
 
 <script>
+// Mostra subito a schermo qualsiasi errore
+window.onerror = function(msg, url, line) {
+  const el = document.getElementById('log');
+  if (el) el.textContent += `❌ Errore JS (riga ${line}): ${msg}\n`;
+};
+
 // ============================================================================
-// CONFIGURAZIONE DEI TUOI APPLICATIVI (CON PERCORSO CODICE E PERCORSO JSON SEPARATI)
+// CONFIGURAZIONE APPLICATIVI (ATTENZIONE ALLE VIRGOLE TRA UN BLOCCO E L'ALTRO)
 // ============================================================================
 const CATALOGO_APP = {
   turni: {
     titolo: "Piano Servizio",
-    percorsoCodice: "C:\\Applicativi\\Piano_Servizio",                        // <-- Cartella dove stanno HTML, CSS e i 6 JS
-    fileHtml: "index.html",                                                   // <-- Nome del file HTML
-    percorsoJson: "G:\\Reparto\\Turni\\Piano_Servizio_Condiviso.json"         // <-- Percorso completo del file JSON (altro disco/cartella)
+    percorsoCodice: "C:\\Applicativi\\Piano_Servizio",
+    fileHtml: "index.html",
+    percorsoJson: "G:\\Reparto\\Turni\\Piano_Servizio_Condiviso.json"
   },
   ddat: {
     titolo: "Numerazione DDAT",
     percorsoCodice: "C:\\Applicativi\\DDAT",
     fileHtml: "index.html",
     percorsoJson: "G:\\Reparto\\Dati_DDAT\\ddat_db.json"
+  },
+  eurodac: {
+    titolo: "Controllo EURODAC",
+    percorsoCodice: "C:\\Applicativi\\EURODAC",
+    fileHtml: "index.html",
+    percorsoJson: "G:\\Reparto\\Dati_EURODAC\\eurodac_db.json"
   },
   respingimenti: {
     titolo: "Numerazione respingimenti",
@@ -86,10 +95,11 @@ const CATALOGO_APP = {
 };
 // ============================================================================
 
-const appKey = new URLSearchParams(location.search).get('app') || 'turni';
-const CFG = CATALOGO_APP[appKey] || CATALOGO_APP.turni;
+const rawParam = new URLSearchParams(location.search).get('app') || 'turni';
+const appKey = rawParam.trim().toLowerCase();
+const CFG = CATALOGO_APP[appKey];
 
-const nativeOpenFilePicker = window.showOpenFilePicker.bind(window);
+const nativeOpenFilePicker = window.showOpenFilePicker ? window.showOpenFilePicker.bind(window) : null;
 const DB_NAME = 'DualPathBootloaderDB';
 const STORE_NAME = 'handles';
 
@@ -102,12 +112,19 @@ const btnStep2 = document.getElementById('btn-step2');
 const btnReset = document.getElementById('btn-reset');
 const logEl = document.getElementById('log');
 
+function logErr(msg) { logEl.textContent += msg + '\n'; }
+
+if (!CFG) {
+  uiTitle.textContent = `❌ App "${appKey}" non trovata`;
+  uiPath.textContent = `Chiavi disponibili: ${Object.keys(CATALOGO_APP).join(', ')}`;
+  btnStep1.style.display = 'none';
+  btnStep2.style.display = 'none';
+  throw new Error(`Chiave "${appKey}" non presente in CATALOGO_APP`);
+}
+
 uiTitle.textContent = `🚀 ${CFG.titolo}`;
 uiPath.innerHTML = `📁 <b>Codice:</b> ${CFG.percorsoCodice}\\${CFG.fileHtml}<br>🗄️ <b>DB JSON:</b> ${CFG.percorsoJson}`;
 
-function logErr(msg) { logEl.textContent += msg + '\n'; }
-
-// --- Gestione memoria IndexedDB per i 2 percorsi (Codice + DB) ---
 function openIDB() {
   return new Promise((res, rej) => {
     const req = indexedDB.open(DB_NAME, 1);
@@ -128,4 +145,45 @@ async function setHandle(key, handle) {
   const db = await openIDB();
   return new Promise((res, rej) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore
+    tx.objectStore(STORE_NAME).put(handle, key);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function clearHandles() {
+  const db = await openIDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  tx.objectStore(STORE_NAME).delete(appKey + '_code');
+  tx.objectStore(STORE_NAME).delete(appKey + '_db');
+}
+
+// Legge un file locale dalla cartella Codice (gestendo spazi %20 e ?v=...)
+async function readCodeFile(codeDirHandle, relPath) {
+  const clean = decodeURIComponent(relPath.split('?')[0].split('#')[0]).replace(/^\.\//, '');
+  const parts = clean.split(/[/\\]/).filter(Boolean);
+  let curr = codeDirHandle;
+  for (let i = 0; i < parts.length - 1; i++) {
+    curr = await curr.getDirectoryHandle(parts[i]);
+  }
+  const fh = await curr.getFileHandle(parts[parts.length - 1]);
+  return await (await fh.getFile()).text();
+}
+
+async function startApp(codeDirHandle, dbFileHandle) {
+  try {
+    logEl.textContent = '';
+
+    const permCode = await codeDirHandle.requestPermission({ mode: 'read' });
+    if (permCode !== 'granted') {
+      logErr('❌ Consenso negato sulla cartella del codice.');
+      return;
+    }
+    const permDb = await dbFileHandle.requestPermission({ mode: 'readwrite' });
+    if (permDb !== 'granted') {
+      logErr('❌ Consenso negato sul file JSON. Clicca "Modifica file".');
+      return;
+    }
+
+    window.__BOOTLOADER_DIR_HANDLE__ = codeDirHandle;
+    window.__BOOTLOADER_DB_HANDLE__ = dbFileHandle;
+    window.__BOOT
