@@ -13,24 +13,21 @@
     }
     .card {
       background: #1e293b; border: 1px solid #334155; border-radius: 12px;
-      padding: 32px; width: 500px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+      padding: 32px; width: 480px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
       text-align: center;
     }
     h2 { margin: 0 0 22px 0; font-size: 22px; color: #38bdf8; }
-    /* Percorsi completamente nascosti a schermo */
-    .path-box { display: none !important; }
     .btn {
-      width: 100%; padding: 14px 16px; border: none; border-radius: 8px;
-      font-size: 15px; font-weight: 700; cursor: pointer; margin-bottom: 10px;
+      width: 100%; padding: 15px 16px; border: none; border-radius: 8px;
+      font-size: 16px; font-weight: 700; cursor: pointer;
     }
     .btn-green { background: #16a34a; color: #fff; }
     .btn-green:hover { background: #15803d; }
     .btn-blue { background: #2563eb; color: #fff; }
     .btn-blue:hover { background: #1d4ed8; }
-    .btn-done { background: #334155; color: #86efac; cursor: default; }
-    .hint { font-size: 13px; color: #94a3b8; margin-top: 8px; line-height: 1.5; white-space: pre-line; }
+    .hint { font-size: 13px; color: #94a3b8; margin-top: 14px; line-height: 1.5; white-space: pre-line; }
     .reset-link {
-      display: inline-block; margin-top: 14px; font-size: 12px;
+      display: inline-block; margin-top: 16px; font-size: 12px;
       color: #64748b; cursor: pointer; text-decoration: underline;
     }
     #log {
@@ -42,16 +39,11 @@
 <body>
 
 <div class="card">
-  <h2 id="ui-title">Avvio Applicativo</h2>
-  <div class="path-box" id="ui-path"></div>
-
-  <button id="btn-launch" class="btn btn-green" style="display:none;">▶️ AVVIA APPLICATIVO</button>
-  <button id="btn-step1" class="btn btn-blue" style="display:none;">1️⃣ COLLEGA CARTELLA APPLICATIVO</button>
-  <button id="btn-step2" class="btn btn-blue" style="display:none;">2️⃣ COLLEGA FILE DATABASE</button>
-
+  <h2 id="ui-title">🚀 Avvio Applicativo</h2>
+  <button id="btn-main" class="btn btn-blue">Caricamento...</button>
   <div class="hint" id="ui-hint"></div>
   <div id="log"></div>
-  <span class="reset-link" id="btn-reset" style="display:none;">⚙️ Riconfigura percorsi</span>
+  <span class="reset-link" id="btn-reset" style="display:none;">⚙️ Riconfigura</span>
 </div>
 
 <script>
@@ -67,25 +59,25 @@ const CATALOGO_APP = {
     titolo: "Piano Servizio",
     percorsoCodice: "C:\\Applicativi\\Piano_Servizio",
     fileHtml: "index.html",
-    percorsoJson: "G:\\Reparto\\Turni\\Piano_Servizio_Condiviso.json"
+    fileDb: "Piano_Servizio_Condiviso.json"
   },
   ddat: {
     titolo: "Numerazione DDAT",
     percorsoCodice: "C:\\Applicativi\\DDAT",
     fileHtml: "index.html",
-    percorsoJson: "G:\\Reparto\\Dati_DDAT\\ddat_db.json"
+    fileDb: "ddat_db.json"
   },
   eurodac: {
     titolo: "Controllo EURODAC",
     percorsoCodice: "C:\\Applicativi\\EURODAC",
     fileHtml: "index.html",
-    percorsoJson: "G:\\Reparto\\Dati_EURODAC\\eurodac_db.json"
+    fileDb: "eurodac_db.json"
   },
   respingimenti: {
     titolo: "Numerazione respingimenti",
     percorsoCodice: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\Respingimenti",
     fileHtml: "2 Modulo di respingimento.html",
-    percorsoJson: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\Respingimenti\\respingimenti.xlsx"
+    fileDb: "respingimenti.xlsx"
   }
 };
 
@@ -93,23 +85,21 @@ const rawParam = new URLSearchParams(location.search).get('app') || 'turni';
 const appKey = rawParam.trim().toLowerCase();
 const CFG = CATALOGO_APP[appKey];
 
-const nativeOpenFilePicker = window.showOpenFilePicker ? window.showOpenFilePicker.bind(window) : null;
 const DB_NAME = 'DualPathBootloaderDB';
 const STORE_NAME = 'handles';
 
 const uiTitle = document.getElementById('ui-title');
 const uiHint = document.getElementById('ui-hint');
-const btnLaunch = document.getElementById('btn-launch');
-const btnStep1 = document.getElementById('btn-step1');
-const btnStep2 = document.getElementById('btn-step2');
+const btnMain = document.getElementById('btn-main');
 const btnReset = document.getElementById('btn-reset');
 const logEl = document.getElementById('log');
 
 function logErr(msg) { logEl.textContent += msg + '\n'; }
 
 if (!CFG) {
-  uiTitle.textContent = '❌ App "' + appKey + '" non trovata';
-  throw new Error('Chiave "' + appKey + '" non presente in CATALOGO_APP');
+  uiTitle.textContent = '❌ Applicativo non trovato';
+  btnMain.style.display = 'none';
+  throw new Error('Chiave "' + appKey + '" non presente');
 }
 
 uiTitle.textContent = '🚀 ' + CFG.titolo;
@@ -161,23 +151,26 @@ async function readCodeFile(codeDirHandle, relPath) {
   return await (await fh.getFile()).text();
 }
 
-async function startApp(codeDirHandle, dbFileHandle) {
+async function startApp(codeDirHandle) {
   try {
     logEl.textContent = '';
 
     const permCode = await codeDirHandle.requestPermission({ mode: 'readwrite' });
     if (permCode !== 'granted') {
-      logErr('❌ Consenso negato sulla cartella.');
+      logErr('❌ Consenso negato. Clicca "Modifica file" nel messaggio di Edge.');
       return;
     }
 
     window.__BOOTLOADER_DIR_HANDLE__ = codeDirHandle;
 
-    if (dbFileHandle) {
-      const permDb = await dbFileHandle.requestPermission({ mode: 'readwrite' });
-      if (permDb === 'granted') {
-        window.__BOOTLOADER_DB_HANDLE__ = dbFileHandle;
-      }
+    // Aggancia in automatico il file DB se è nella stessa cartella
+    const candidati = [CFG.fileDb, 'respingimenti.xlsx', 'database_respingimenti.json'];
+    for (const nomeFile of candidati) {
+      if (!nomeFile) continue;
+      try {
+        window.__BOOTLOADER_DB_HANDLE__ = await codeDirHandle.getFileHandle(nomeFile, { create: false });
+        break;
+      } catch (_) {}
     }
 
     const rawHtml = await readCodeFile(codeDirHandle, CFG.fileHtml);
@@ -256,81 +249,25 @@ async function startApp(codeDirHandle, dbFileHandle) {
 
 async function refreshUI() {
   const codeHandle = await getHandle(appKey + '_code');
-  const dbHandle = await getHandle(appKey + '_db');
 
-  if (codeHandle && dbHandle) {
-    btnStep1.style.display = 'none';
-    btnStep2.style.display = 'none';
-    btnLaunch.style.display = 'block';
-    btnReset.style.display = 'inline-block';
-    btnLaunch.textContent = '▶️ AVVIA ' + CFG.titolo.toUpperCase();
+  if (codeHandle) {
+    btnMain.className = 'btn btn-green';
+    btnMain.textContent = '▶️ AVVIA ' + CFG.titolo.toUpperCase();
     uiHint.textContent = 'Clicca il pulsante verde e conferma "Modifica file" nel messaggio di Edge.';
-    btnLaunch.onclick = () => startApp(codeHandle, dbHandle);
+    btnReset.style.display = 'inline-block';
+    btnMain.onclick = () => startApp(codeHandle);
   } else {
-    btnLaunch.style.display = 'none';
+    btnMain.className = 'btn btn-blue';
+    btnMain.textContent = '🔗 COLLEGA APPLICATIVO (1ª VOLTA)';
+    uiHint.textContent = 'Clicca il pulsante, premi Ctrl+V + Invio nella finestra\ne clicca "Seleziona cartella".';
     btnReset.style.display = 'none';
-    btnStep1.style.display = 'block';
-    btnStep2.style.display = 'block';
-
-    if (codeHandle) {
-      btnStep1.className = 'btn btn-done';
-      btnStep1.textContent = '✅ 1️⃣ CARTELLA APPLICATIVO COLLEGATA';
-    } else {
-      btnStep1.className = 'btn btn-blue';
-      btnStep1.textContent = '1️⃣ COLLEGA CARTELLA APPLICATIVO';
-    }
-
-    if (dbHandle) {
-      btnStep2.className = 'btn btn-done';
-      btnStep2.textContent = '✅ 2️⃣ DATABASE COLLEGATO';
-    } else {
-      btnStep2.className = 'btn btn-blue';
-      btnStep2.textContent = '2️⃣ COLLEGA FILE DATABASE';
-    }
-
-    uiHint.textContent = 'Alla prima apertura clicca 1️⃣ (e 2️⃣ se richiesto).\nIl percorso viene copiato da solo in memoria: premi Ctrl+V + Invio nella finestra.';
-
-    btnStep1.onclick = async () => {
+    btnMain.onclick = async () => {
       try {
         await navigator.clipboard.writeText(CFG.percorsoCodice).catch(() => {});
         const h = await window.showDirectoryPicker({ mode: 'readwrite' });
         await setHandle(appKey + '_code', h);
-
-        const candidati = [CFG.percorsoJson.split('\\').pop(), 'respingimenti.xlsx', 'database_respingimenti.json'];
-        for (const nomeFile of candidati) {
-          if (!nomeFile) continue;
-          try {
-            const autoDb = await h.getFileHandle(nomeFile, { create: false });
-            await setHandle(appKey + '_db', autoDb);
-            await refreshUI();
-            await startApp(h, autoDb);
-            return;
-          } catch (_) {}
-        }
-
         await refreshUI();
-      } catch (e) {
-        if (e.name !== 'AbortError') logErr('❌ ' + e.message);
-      }
-    };
-
-    btnStep2.onclick = async () => {
-      try {
-        await navigator.clipboard.writeText(CFG.percorsoJson).catch(() => {});
-        const [fh] = await nativeOpenFilePicker({
-          multiple: false,
-          types: [{
-            description: 'Database (JSON o Excel)',
-            accept: {
-              'application/json': ['.json'],
-              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
-            }
-          }]
-        });
-        await setHandle(appKey + '_db', fh);
-        await refreshUI();
-        const ch = await getHandle(appKey + '_code');
-        if (ch && fh) await startApp(ch, fh);
+        await startApp(h);
       } catch (e) {
         if (e.name !== 'AbortError') logErr('❌ ' + e.message);
       }
