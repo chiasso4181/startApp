@@ -73,4 +73,277 @@ const CATALOGO_APP = {
     titolo: "Numerazione DDAT",
     percorsoCodice: "C:\\Applicativi\\DDAT",
     fileHtml: "index.html",
-    percorsoJson: "G:\\Reparto\\Dati_DDAT\\ddat_
+    percorsoJson: "G:\\Reparto\\Dati_DDAT\\ddat_db.json"
+  },
+  eurodac: {
+    titolo: "Controllo EURODAC",
+    percorsoCodice: "C:\\Applicativi\\EURODAC",
+    fileHtml: "index.html",
+    percorsoJson: "G:\\Reparto\\Dati_EURODAC\\eurodac_db.json"
+  },
+  respingimenti: {
+    titolo: "Numerazione respingimenti",
+    percorsoCodice: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\Respingimenti",
+    fileHtml: "2 Modulo di respingimento.html",
+    percorsoJson: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\Respingimenti\\respingimenti.xlsx"
+  }
+};
+
+const rawParam = new URLSearchParams(location.search).get('app') || 'turni';
+const appKey = rawParam.trim().toLowerCase();
+const CFG = CATALOGO_APP[appKey];
+
+const nativeOpenFilePicker = window.showOpenFilePicker ? window.showOpenFilePicker.bind(window) : null;
+const DB_NAME = 'DualPathBootloaderDB';
+const STORE_NAME = 'handles';
+
+const uiTitle = document.getElementById('ui-title');
+const uiHint = document.getElementById('ui-hint');
+const btnLaunch = document.getElementById('btn-launch');
+const btnStep1 = document.getElementById('btn-step1');
+const btnStep2 = document.getElementById('btn-step2');
+const btnReset = document.getElementById('btn-reset');
+const logEl = document.getElementById('log');
+
+function logErr(msg) { logEl.textContent += msg + '\n'; }
+
+if (!CFG) {
+  uiTitle.textContent = '❌ App "' + appKey + '" non trovata';
+  throw new Error('Chiave "' + appKey + '" non presente in CATALOGO_APP');
+}
+
+uiTitle.textContent = '🚀 ' + CFG.titolo;
+
+function openIDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE_NAME);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+async function getHandle(key) {
+  try {
+    const db = await openIDB();
+    return await new Promise(res => {
+      const req = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(key);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => res(null);
+    });
+  } catch (_) {
+    return null;
+  }
+}
+async function setHandle(key, handle) {
+  const db = await openIDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).put(handle, key);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function clearHandles() {
+  const db = await openIDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  tx.objectStore(STORE_NAME).delete(appKey + '_code');
+  tx.objectStore(STORE_NAME).delete(appKey + '_db');
+}
+
+async function readCodeFile(codeDirHandle, relPath) {
+  const clean = decodeURIComponent(relPath.split('?')[0].split('#')[0]).replace(/^\.\//, '');
+  const parts = clean.split(/[/\\]/).filter(Boolean);
+  let curr = codeDirHandle;
+  for (let i = 0; i < parts.length - 1; i++) {
+    curr = await curr.getDirectoryHandle(parts[i]);
+  }
+  const fh = await curr.getFileHandle(parts[parts.length - 1]);
+  return await (await fh.getFile()).text();
+}
+
+async function startApp(codeDirHandle, dbFileHandle) {
+  try {
+    logEl.textContent = '';
+
+    const permCode = await codeDirHandle.requestPermission({ mode: 'readwrite' });
+    if (permCode !== 'granted') {
+      logErr('❌ Consenso negato sulla cartella.');
+      return;
+    }
+
+    window.__BOOTLOADER_DIR_HANDLE__ = codeDirHandle;
+
+    if (dbFileHandle) {
+      const permDb = await dbFileHandle.requestPermission({ mode: 'readwrite' });
+      if (permDb === 'granted') {
+        window.__BOOTLOADER_DB_HANDLE__ = dbFileHandle;
+      }
+    }
+
+    const rawHtml = await readCodeFile(codeDirHandle, CFG.fileHtml);
+    const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+
+    const headNodes = Array.from(doc.head.querySelectorAll('link[rel="stylesheet"], style'));
+    document.head.innerHTML = '';
+    document.title = doc.title || CFG.titolo;
+
+    for (const node of headNodes) {
+      if (node.tagName === 'STYLE') {
+        const st = document.createElement('style');
+        st.textContent = node.textContent;
+        document.head.appendChild(st);
+      } else if (node.tagName === 'LINK') {
+        const href = node.getAttribute('href');
+        if (!href) continue;
+        if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) {
+          const lnk = document.createElement('link');
+          lnk.rel = 'stylesheet';
+          lnk.href = href;
+          document.head.appendChild(lnk);
+        } else {
+          const cssText = await readCodeFile(codeDirHandle, href);
+          const st = document.createElement('style');
+          st.textContent = cssText + '\n/*# sourceURL=' + href.split('?')[0] + ' */';
+          document.head.appendChild(st);
+        }
+      }
+    }
+
+    const scripts = [
+      ...Array.from(doc.head.querySelectorAll('script')),
+      ...Array.from(doc.body.querySelectorAll('script'))
+    ];
+    doc.body.querySelectorAll('script').forEach(s => s.remove());
+    document.body.className = doc.body.className;
+    document.body.style.cssText = doc.body.style.cssText;
+    document.body.innerHTML = doc.body.innerHTML;
+
+    for (const oldScript of scripts) {
+      const src = oldScript.getAttribute('src');
+      const s = document.createElement('script');
+      if (oldScript.type) s.type = oldScript.type;
+      if (!src) {
+        s.textContent = oldScript.textContent;
+        document.body.appendChild(s);
+      } else if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
+        await new Promise((res, rej) => {
+          s.src = src;
+          s.onload = res;
+          s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      } else {
+        const cleanSrc = src.split('?')[0];
+        const jsCode = await readCodeFile(codeDirHandle, src);
+        s.textContent = jsCode + '\n//# sourceURL=' + cleanSrc;
+        document.body.appendChild(s);
+      }
+    }
+
+    const bodyOnload = doc.body.getAttribute('onload');
+    if (bodyOnload) {
+      try { new Function(bodyOnload)(); } catch (e) { console.error(e); }
+    }
+
+    document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+    window.dispatchEvent(new Event('load'));
+
+  } catch (err) {
+    logErr('❌ Errore durante l\'avvio: ' + err.message);
+    console.error(err);
+  }
+}
+
+async function refreshUI() {
+  const codeHandle = await getHandle(appKey + '_code');
+  const dbHandle = await getHandle(appKey + '_db');
+
+  if (codeHandle && dbHandle) {
+    btnStep1.style.display = 'none';
+    btnStep2.style.display = 'none';
+    btnLaunch.style.display = 'block';
+    btnReset.style.display = 'inline-block';
+    btnLaunch.textContent = '▶️ AVVIA ' + CFG.titolo.toUpperCase();
+    uiHint.textContent = 'Clicca il pulsante verde e conferma "Modifica file" nel messaggio di Edge.';
+    btnLaunch.onclick = () => startApp(codeHandle, dbHandle);
+  } else {
+    btnLaunch.style.display = 'none';
+    btnReset.style.display = 'none';
+    btnStep1.style.display = 'block';
+    btnStep2.style.display = 'block';
+
+    if (codeHandle) {
+      btnStep1.className = 'btn btn-done';
+      btnStep1.textContent = '✅ 1️⃣ CARTELLA APPLICATIVO COLLEGATA';
+    } else {
+      btnStep1.className = 'btn btn-blue';
+      btnStep1.textContent = '1️⃣ COLLEGA CARTELLA APPLICATIVO';
+    }
+
+    if (dbHandle) {
+      btnStep2.className = 'btn btn-done';
+      btnStep2.textContent = '✅ 2️⃣ DATABASE COLLEGATO';
+    } else {
+      btnStep2.className = 'btn btn-blue';
+      btnStep2.textContent = '2️⃣ COLLEGA FILE DATABASE';
+    }
+
+    uiHint.textContent = 'Alla prima apertura clicca 1️⃣ (e 2️⃣ se richiesto).\nIl percorso viene copiato da solo in memoria: premi Ctrl+V + Invio nella finestra.';
+
+    btnStep1.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(CFG.percorsoCodice).catch(() => {});
+        const h = await window.showDirectoryPicker({ mode: 'readwrite' });
+        await setHandle(appKey + '_code', h);
+
+        const candidati = [CFG.percorsoJson.split('\\').pop(), 'respingimenti.xlsx', 'database_respingimenti.json'];
+        for (const nomeFile of candidati) {
+          if (!nomeFile) continue;
+          try {
+            const autoDb = await h.getFileHandle(nomeFile, { create: false });
+            await setHandle(appKey + '_db', autoDb);
+            await refreshUI();
+            await startApp(h, autoDb);
+            return;
+          } catch (_) {}
+        }
+
+        await refreshUI();
+      } catch (e) {
+        if (e.name !== 'AbortError') logErr('❌ ' + e.message);
+      }
+    };
+
+    btnStep2.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(CFG.percorsoJson).catch(() => {});
+        const [fh] = await nativeOpenFilePicker({
+          multiple: false,
+          types: [{
+            description: 'Database (JSON o Excel)',
+            accept: {
+              'application/json': ['.json'],
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
+            }
+          }]
+        });
+        await setHandle(appKey + '_db', fh);
+        await refreshUI();
+        const ch = await getHandle(appKey + '_code');
+        if (ch && fh) await startApp(ch, fh);
+      } catch (e) {
+        if (e.name !== 'AbortError') logErr('❌ ' + e.message);
+      }
+    };
+  }
+}
+
+btnReset.onclick = async () => {
+  await clearHandles();
+  await refreshUI();
+};
+
+refreshUI();
+</script>
+</body>
+</html>
