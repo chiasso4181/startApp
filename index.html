@@ -54,32 +54,48 @@ window.onerror = function(msg, url, line) {
 </script>
 
 <script>
+// Decodifica runtime stringhe offuscate (nessun percorso di rete o nome file in chiaro)
+const _K = [90, 165, 60, 195];
+function _d(hex) {
+  const u = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < u.length; i++) {
+    u[i] = parseInt(hex.substr(i * 2, 2), 16) ^ _K[i & 3];
+  }
+  return new TextDecoder('utf-8').decode(u);
+}
+
 const CATALOGO_APP = {
   turni: {
     titolo: "Piano Servizio",
-    percorsoCodice: "C:\\Applicativi\\Piano_Servizio",
-    fileHtml: "index.html",
-    fileDb: "Piano_Servizio_Condiviso.json"
+    percorsoCodice: _d("199f60822ac550aa39c448aa2cdc609333c453bd3bc54af5"),
+    fileHtml: _d("33cb58a6228b54b737cb"),
+    fileDb: _d("0acc5dad35fa6fb628d355b933ca639628cb58b533d653ed30d653ad")
   },
   ddat: {
     titolo: "Numerazione DDAT",
-    percorsoCodice: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\numerazioni",
-    fileHtml: "Numerazioni_DDAT.html",
-    fileDb: "Formulari_Dogana_Chiasso_DB.json"
+    percorsoCodice: _d("06fb6aa56ad50cd13bc15eac34d14ea274c458ae33cb12a032fb59b92cfb43ef35d663ac25fa12c22ad35eb02ee6539c2efc48a238c050af3fd75dad3fc952b637c04ea239cb53ad"),
+    fileHtml: _d("1dc04fb733ca52a236c0638535d751b636c44eab05e153a43bc95dc932d151af"),
+    fileDb: _d("1cc74eae2fc95db133fa78ac3dc452a205e654aa3bd64fac05e17ef330d653ad"),
+    directWrite: true
   },
   rapportino: {
     titolo: "Rapportino",
-    percorsoCodice: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\rapp",
-    fileHtml: "rapportino.html",
-    fileDb: "rapportino_db.json"
+    percorsoCodice: _d("06fb6aa56ad50cd13bc15eac34d14ea274c458ae33cb12a032fb59b92cfb43ef35d663ac25fa12c22ad35eb02ee6539c2efc48a238c050af3fd75dad3fc94ea22ad5"),
+    fileHtml: _d("28c44cb335d748aa34ca12ab2ec850"),
+    fileDb: _d("28c44cb335d748aa34ca63a7388b56b035cb")
   },
   respingimenti: {
     titolo: "Numerazione respingimenti",
-    percorsoCodice: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\Respingimenti",
-    fileHtml: "2 Modulo di respingimento.html",
-    fileDb: "respingimenti.xlsx"
+    percorsoCodice: _d("06fb6aa56ad50cd13bc15eac34d14ea274c458ae33cb12a032fb59b92cfb43ef35d663ac25fa12c22ad35eb02ee6539c2efc48a238c050af3fd75dad3fc96ea629d555ad3dc051a634d155"),
+    fileHtml: _d("688571ac3ed050ac7ac155e328c04fb333cb5baa37c052b7358b54b737cb"),
+    fileDb: _d("28c04fb333cb5baa37c052b7338b44af29dd")
   }
 };
+
+const EXTRA_CANDIDATI = [
+  _d("28c04fb333cb5baa37c052b7338b44af29dd"),
+  _d("3ec448a238c44fa605d759b02acc52a433c859ad2ecc12a929ca52")
+];
 
 const rawParam = new URLSearchParams(location.search).get('app') || 'turni';
 const appKey = rawParam.trim().toLowerCase();
@@ -151,6 +167,26 @@ async function readCodeFile(codeDirHandle, relPath) {
   return await (await fh.getFile()).text();
 }
 
+async function trovaDatabase(codeDirHandle) {
+  const candidati = [CFG.fileDb, ...EXTRA_CANDIDATI];
+  for (const nomeFile of candidati) {
+    if (!nomeFile) continue;
+    try {
+      return await codeDirHandle.getFileHandle(nomeFile, { create: false });
+    } catch (_) {}
+  }
+  if (CFG.directWrite) {
+    try {
+      const trovati = [];
+      for await (const voce of codeDirHandle.values()) {
+        if (voce.kind === 'file' && /\.json$/i.test(voce.name) && /formulari/i.test(voce.name)) trovati.push(voce);
+      }
+      if (trovati.length === 1) return trovati[0];
+    } catch (_) {}
+  }
+  return null;
+}
+
 async function startApp(codeDirHandle) {
   try {
     logEl.textContent = '';
@@ -162,18 +198,28 @@ async function startApp(codeDirHandle) {
     }
 
     window.__BOOTLOADER_DIR_HANDLE__ = codeDirHandle;
+    window.__BOOTLOADER_DB_HANDLE__ = await trovaDatabase(codeDirHandle);
 
-    // Aggancia in automatico il file DB se è nella stessa cartella
-    const candidati = [CFG.fileDb, 'respingimenti.xlsx', 'database_respingimenti.json'];
-    for (const nomeFile of candidati) {
-      if (!nomeFile) continue;
-      try {
-        window.__BOOTLOADER_DB_HANDLE__ = await codeDirHandle.getFileHandle(nomeFile, { create: false });
-        break;
-      } catch (_) {}
+    let rawHtml;
+    try {
+      rawHtml = await readCodeFile(codeDirHandle, CFG.fileHtml);
+    } catch (e) {
+      if (e && e.name === 'NotFoundError') {
+        logErr('❌ File applicativo «' + CFG.fileHtml + '» non trovato nella cartella selezionata.\nControlla di averlo copiato nella cartella oppure clicca «⚙️ Riconfigura».');
+        return;
+      }
+      throw e;
     }
 
-    const rawHtml = await readCodeFile(codeDirHandle, CFG.fileHtml);
+    // Per app single-file offuscate (es. ddat): montaggio diretto + rilancio evento load dopo il loader interno
+    if (CFG.directWrite) {
+      document.open();
+      document.write(rawHtml);
+      document.close();
+      setTimeout(() => { window.dispatchEvent(new Event('load')); }, 60);
+      return;
+    }
+
     const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
 
     const headNodes = Array.from(doc.head.querySelectorAll('link[rel="stylesheet"], style'));
