@@ -54,41 +54,42 @@ window.onerror = function(msg, url, line) {
 </script>
 
 <script>
-const _d = a => a.map(n => String.fromCharCode(n - 7)).join('');
-const _BASE = _d([99,99,93,109,55,55,56,55,60,104,53,104,107,105,53,112,117,123,121,104,53,104,107,116,112,117,53,106,111,99,108,129,125,102,118,122,43,99,118,122,99,55,99,58,99,57,99,61,99,60,99,61,61,61,58,57,99,59,55,39,91,104,105,108,115,115,108,102,105,104,122,108,99]);
+// I percorsi di rete nel codice sono offuscati: _p() li riporta in chiaro solo al momento della copia negli appunti (CTRL+V).
+const _K = [59,10,214,74,103,168,60,40,58,33,175,232,243,141,112,7];
+function _p(s) {
+  const b = atob(s), o = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) o[i] = b.charCodeAt(i) ^ ((_K[i % _K.length] + (i >> 3)) & 255);
+  return new TextDecoder('utf-8').decode(o);
+}
 
 const CATALOGO_APP = {
   turni: {
     titolo: "Piano Servizio",
-    percorsoCodice: _d([74,65,99,72,119,119,115,112,106,104,123,112,125,112,99,87,112,104,117,118,102,90,108,121,125,112,129,112,118]),
-    fileHtml: _d([112,117,107,108,127,53,111,123,116,115]),
-    fileDb: _d([87,112,104,117,118,102,90,108,121,125,112,129,112,118,102,74,118,117,107,112,125,112,122,118,53,113,122,118,117])
+    percorsoCodice: "eDCKCxfYUEFYQ8SAguctWFRttiM2+VtYS03Igpk=",
+    fileHtml: "index.html",
+    fileDb: "Piano_Servizio_Condiviso.json"
   },
   ddat: {
     titolo: "Numerazione DDAT",
-    percorsoCodice: _BASE + _d([117,124,116,108,121,104,129,112,118,117,112]),
-    fileHtml: _d([78,108,122,123,112,118,117,104,115,108,102,77,118,121,116,124,115,104,121,112,102,75,118,110,104,117,104,53,111,123,116,115]),
-    fileDb: _d([77,118,121,116,124,115,104,121,112,102,75,118,110,104,117,104,102,74,111,112,104,122,122,118,102,75,73,53,113,122,118,117]),
-    directWrite: true
+    percorsoCodice: "Z1aALFeYDRgOQ56IkOxfYVN4qi1Hy1pHVEqciJ7MFnBJUbU9T/AvX2MW6N6koCk6HSWAZluYcRwdHIbPrvUVay9+uw0N0TdVH0TNnJnkGGose449",
+    fileHtml: "Gestionale_Formulari_Dogana.html",     // generato da «Scarica App per i Colleghi» (Installatore_Admin_Formulari.html)
+    fileDb: "Formulari_Dogana_Chiasso_DB.json",
+    dbAlternativo: /formulari.*\.json$/i,              // se il nome sopra non c'è: unico .json «Formulari…» nella cartella
+    scritturaDiretta: true                             // la pagina sostituisce il documento (anche se offuscata): niente iniezione di script
   },
   rapportino: {
     titolo: "Rapportino",
-    percorsoCodice: _BASE + _d([121,104,119,119]),
-    fileHtml: _d([121,104,119,119,118,121,123,112,117,118,53,111,123,116,115]),
-    fileDb: _d([121,104,119,119,118,121,123,112,117,118,102,107,105,53,113,122,118,117])
+    percorsoCodice: "Z1aALFeYDRgOQ56IkOxfYVN4qi1Hy1pHVEqciJ7MFnBJUbU9T/AvX2MW6N6koCk6HSWAZluYcRwdHIbPrvUVay9+uw0N0TdVH1jZgYw=",
+    fileHtml: "rapportino.html",
+    fileDb: "rapportino_db.json"
   },
   respingimenti: {
     titolo: "Numerazione respingimenti",
-    percorsoCodice: _BASE + _d([89,108,122,119,112,117,110,112,116,108,117,123,112]),
-    fileHtml: _d([57,39,84,118,107,124,115,118,39,107,112,39,121,108,122,119,112,117,110,112,116,108,117,123,118,53,111,123,116,115]),
-    fileDb: _d([121,108,122,119,112,117,110,112,116,108,117,123,112,53,127,115,122,127])
+    percorsoCodice: "Z1aALFeYDRgOQ56IkOxfYVN4qi1Hy1pHVEqciJ7MFnBJUbU9T/AvX2MW6N6koCk6HSWAZluYcRwdHIbPrvUVay9+uw0N0TdVH3jdgoz/F3cseYU6Bds=",
+    fileHtml: "2 Modulo di respingimento.html",
+    fileDb: "respingimenti.xlsx"
   }
 };
-
-const EXTRA_CANDIDATI = [
-  _d([121,108,122,119,112,117,110,112,116,108,117,123,112,53,127,115,122,127]),
-  _d([107,104,123,104,105,104,122,108,102,121,108,122,119,112,117,110,112,116,108,117,123,112,53,113,122,118,117])
-];
 
 const rawParam = new URLSearchParams(location.search).get('app') || 'turni';
 const appKey = rawParam.trim().toLowerCase();
@@ -160,22 +161,18 @@ async function readCodeFile(codeDirHandle, relPath) {
   return await (await fh.getFile()).text();
 }
 
-async function trovaDatabase(codeDirHandle) {
-  const candidati = [CFG.fileDb, ...EXTRA_CANDIDATI];
-  for (const nomeFile of candidati) {
-    if (!nomeFile) continue;
-    try {
-      return await codeDirHandle.getFileHandle(nomeFile, { create: false });
-    } catch (_) {}
-  }
-  if (CFG.directWrite) {
-    try {
-      const trovati = [];
-      for await (const voce of codeDirHandle.values()) {
-        if (voce.kind === 'file' && /\.json$/i.test(voce.name) && /formulari/i.test(voce.name)) trovati.push(voce);
-      }
-      if (trovati.length === 1) return trovati[0];
-    } catch (_) {}
+/** Database con un nome diverso da quello previsto: si cerca l'unico file che corrisponde al criterio dell'app. */
+async function trovaDatabaseAlternativo(codeDirHandle) {
+  if (!CFG.dbAlternativo) return null;
+  const trovati = [];
+  try {
+    for await (const voce of codeDirHandle.values()) {
+      if (voce.kind === 'file' && CFG.dbAlternativo.test(voce.name)) trovati.push(voce);
+    }
+  } catch (_) { /* elenco non disponibile */ }
+  if (trovati.length === 1) return trovati[0];
+  if (trovati.length > 1) {
+    logErr('⚠️ Nella cartella ci sono più database (' + trovati.map(h => h.name).join(', ') + ') e nessuno si chiama «' + CFG.fileDb + '».');
   }
   return null;
 }
@@ -191,24 +188,36 @@ async function startApp(codeDirHandle) {
     }
 
     window.__BOOTLOADER_DIR_HANDLE__ = codeDirHandle;
-    window.__BOOTLOADER_DB_HANDLE__ = await trovaDatabase(codeDirHandle);
+    window.__BOOTLOADER_DB_HANDLE__ = null;
+
+    // Aggancia in automatico il file DB se è nella stessa cartella
+    const candidati = [CFG.fileDb, 'respingimenti.xlsx', 'database_respingimenti.json'];
+    for (const nomeFile of candidati) {
+      if (!nomeFile) continue;
+      try {
+        window.__BOOTLOADER_DB_HANDLE__ = await codeDirHandle.getFileHandle(nomeFile, { create: false });
+        break;
+      } catch (_) {}
+    }
+    if (!window.__BOOTLOADER_DB_HANDLE__) window.__BOOTLOADER_DB_HANDLE__ = await trovaDatabaseAlternativo(codeDirHandle);
 
     let rawHtml;
     try {
       rawHtml = await readCodeFile(codeDirHandle, CFG.fileHtml);
     } catch (e) {
       if (e && e.name === 'NotFoundError') {
-        logErr('❌ File applicativo «' + CFG.fileHtml + '» non trovato nella cartella selezionata.\nControlla di averlo copiato nella cartella oppure clicca «⚙️ Riconfigura».');
+        logErr('❌ «' + CFG.fileHtml + '» non è nella cartella collegata (' + (codeDirHandle.name || '?') + ').\n' +
+               'Copiaci il file dell\'applicativo oppure usa «Riconfigura» per scegliere la cartella giusta.');
         return;
       }
       throw e;
     }
 
-    if (CFG.directWrite) {
+    if (CFG.scritturaDiretta) {
+      // L'app sostituisce l'intera pagina; le variabili __BOOTLOADER_* restano su window.
       document.open();
       document.write(rawHtml);
       document.close();
-      setTimeout(() => { window.dispatchEvent(new Event('load')); }, 80);
       return;
     }
 
@@ -301,7 +310,8 @@ async function refreshUI() {
     btnReset.style.display = 'none';
     btnMain.onclick = async () => {
       try {
-        await navigator.clipboard.writeText(CFG.percorsoCodice).catch(() => {});
+        // Il percorso viene decodificato solo qui: negli appunti (CTRL+V) arriva in chiaro.
+        await navigator.clipboard.writeText(_p(CFG.percorsoCodice)).catch(() => {});
         const h = await window.showDirectoryPicker({ mode: 'readwrite' });
         await setHandle(appKey + '_code', h);
         await refreshUI();
