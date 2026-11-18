@@ -54,47 +54,40 @@ window.onerror = function(msg, url, line) {
 </script>
 
 <script>
-// Decodifica runtime stringhe offuscate (nessun percorso di rete o nome file in chiaro)
-const _K = [90, 165, 60, 195];
-function _d(hex) {
-  const u = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < u.length; i++) {
-    u[i] = parseInt(hex.substr(i * 2, 2), 16) ^ _K[i & 3];
-  }
-  return new TextDecoder('utf-8').decode(u);
-}
+const _d = a => a.map(n => String.fromCharCode(n - 7)).join('');
+const _BASE = _d([99,99,93,109,55,55,56,55,60,104,53,104,107,105,53,112,117,123,121,104,53,104,107,116,112,117,53,106,111,99,108,129,125,102,118,122,43,99,118,122,99,55,99,58,99,57,99,61,99,60,99,61,61,61,58,57,99,59,55,39,91,104,105,108,115,115,108,102,105,104,122,108,99]);
 
 const CATALOGO_APP = {
   turni: {
     titolo: "Piano Servizio",
-    percorsoCodice: _d("199f60822ac550aa39c448aa2cdc609333c453bd3bc54af5"),
-    fileHtml: _d("33cb58a6228b54b737cb"),
-    fileDb: _d("0acc5dad35fa6fb628d355b933ca639628cb58b533d653ed30d653ad")
+    percorsoCodice: _d([74,65,99,72,119,119,115,112,106,104,123,112,125,112,99,87,112,104,117,118,102,90,108,121,125,112,129,112,118]),
+    fileHtml: _d([112,117,107,108,127,53,111,123,116,115]),
+    fileDb: _d([87,112,104,117,118,102,90,108,121,125,112,129,112,118,102,74,118,117,107,112,125,112,122,118,53,113,122,118,117])
   },
   ddat: {
     titolo: "Numerazione DDAT",
-    percorsoCodice: _d("06fb6aa56ad50cd13bc15eac34d14ea274c458ae33cb12a032fb59b92cfb43ef35d663ac25fa12c22ad35eb02ee6539c2efc48a238c050af3fd75dad3fc952b637c04ea239cb53ad"),
-    fileHtml: _d("1dc04fb733ca52a236c0638535d751b636c44eab05e153a43bc95dc932d151af"),
-    fileDb: _d("1cc74eae2fc95db133fa78ac3dc452a205e654aa3bd64fac05e17ef330d653ad"),
+    percorsoCodice: _BASE + _d([117,124,116,108,121,104,129,112,118,117,112]),
+    fileHtml: _d([78,108,122,123,112,118,117,104,115,108,102,77,118,121,116,124,115,104,121,112,102,75,118,110,104,117,104,53,111,123,116,115]),
+    fileDb: _d([77,118,121,116,124,115,104,121,112,102,75,118,110,104,117,104,102,74,111,112,104,122,122,118,102,75,73,53,113,122,118,117]),
     directWrite: true
   },
   rapportino: {
     titolo: "Rapportino",
-    percorsoCodice: _d("06fb6aa56ad50cd13bc15eac34d14ea274c458ae33cb12a032fb59b92cfb43ef35d663ac25fa12c22ad35eb02ee6539c2efc48a238c050af3fd75dad3fc94ea22ad5"),
-    fileHtml: _d("28c44cb335d748aa34ca12ab2ec850"),
-    fileDb: _d("28c44cb335d748aa34ca63a7388b56b035cb")
+    percorsoCodice: _BASE + _d([121,104,119,119]),
+    fileHtml: _d([121,104,119,119,118,121,123,112,117,118,53,111,123,116,115]),
+    fileDb: _d([121,104,119,119,118,121,123,112,117,118,102,107,105,53,113,122,118,117])
   },
   respingimenti: {
     titolo: "Numerazione respingimenti",
-    percorsoCodice: _d("06fb6aa56ad50cd13bc15eac34d14ea274c458ae33cb12a032fb59b92cfb43ef35d663ac25fa12c22ad35eb02ee6539c2efc48a238c050af3fd75dad3fc96ea629d555ad3dc051a634d155"),
-    fileHtml: _d("688571ac3ed050ac7ac155e328c04fb333cb5baa37c052b7358b54b737cb"),
-    fileDb: _d("28c04fb333cb5baa37c052b7338b44af29dd")
+    percorsoCodice: _BASE + _d([89,108,122,119,112,117,110,112,116,108,117,123,112]),
+    fileHtml: _d([57,39,84,118,107,124,115,118,39,107,112,39,121,108,122,119,112,117,110,112,116,108,117,123,118,53,111,123,116,115]),
+    fileDb: _d([121,108,122,119,112,117,110,112,116,108,117,123,112,53,127,115,122,127])
   }
 };
 
 const EXTRA_CANDIDATI = [
-  _d("28c04fb333cb5baa37c052b7338b44af29dd"),
-  _d("3ec448a238c44fa605d759b02acc52a433c859ad2ecc12a929ca52")
+  _d([121,108,122,119,112,117,110,112,116,108,117,123,112,53,127,115,122,127]),
+  _d([107,104,123,104,105,104,122,108,102,121,108,122,119,112,117,110,112,116,108,117,123,112,53,113,122,118,117])
 ];
 
 const rawParam = new URLSearchParams(location.search).get('app') || 'turni';
@@ -211,12 +204,11 @@ async function startApp(codeDirHandle) {
       throw e;
     }
 
-    // Per app single-file offuscate (es. ddat): montaggio diretto + rilancio evento load dopo il loader interno
     if (CFG.directWrite) {
       document.open();
       document.write(rawHtml);
       document.close();
-      setTimeout(() => { window.dispatchEvent(new Event('load')); }, 60);
+      setTimeout(() => { window.dispatchEvent(new Event('load')); }, 80);
       return;
     }
 
