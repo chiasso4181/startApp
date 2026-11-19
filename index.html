@@ -190,8 +190,11 @@ async function startApp(codeDirHandle) {
     window.__BOOTLOADER_DIR_HANDLE__ = codeDirHandle;
     window.__BOOTLOADER_DB_HANDLE__ = null;
 
-    // Aggancia in automatico il file DB se è nella stessa cartella
-    const candidati = [CFG.fileDb, 'respingimenti.xlsx', 'database_respingimenti.json'];
+    // Aggancia in automatico il file DB specifico dell'applicativo nella cartella collegata
+    const candidati = [CFG.fileDb];
+    if (appKey === 'respingimenti' && !candidati.includes('database_respingimenti.json')) {
+      candidati.push('database_respingimenti.json');
+    }
     for (const nomeFile of candidati) {
       if (!nomeFile) continue;
       try {
@@ -200,6 +203,12 @@ async function startApp(codeDirHandle) {
       } catch (_) {}
     }
     if (!window.__BOOTLOADER_DB_HANDLE__) window.__BOOTLOADER_DB_HANDLE__ = await trovaDatabaseAlternativo(codeDirHandle);
+
+    // Espone anche gli alias letti direttamente da 2 Modulo di respingimento.html
+    window.BOOTLOADER_ACTIVE = true;
+    window.bootloaderDirHandle = codeDirHandle;
+    window.bootloaderFileHandle = window.__BOOTLOADER_DB_HANDLE__;
+    window.dbFileHandle = window.__BOOTLOADER_DB_HANDLE__;
 
     let rawHtml;
     try {
